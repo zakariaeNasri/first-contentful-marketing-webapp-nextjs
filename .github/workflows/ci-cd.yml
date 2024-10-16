@@ -1,0 +1,66 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+      - test
+  pull_request:
+    branches:
+      - master
+      - dev
+      - test
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Linter
+        run: npx eslint . --ext .js,.jsx,.ts,.tsx
+
+      - name: Run Tests
+        run: npm test
+
+  contentful-sync:
+    runs-on: ubuntu-latest
+    needs: build-and-test  # Sync only if tests pass
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install Contentful CLI
+        run: npm install -g contentful-cli
+
+      - name: Determine Contentful Environment
+        id: determine-env
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "env=master" >> $GITHUB_ENV
+          elif [[ "${{ github.ref_name }}" == "develop" ]]; then
+            echo "env=develop" >> $GITHUB_ENV
+          elif [[ "${{ github.ref_name }}" == "test" ]]; then
+            echo "env=test" >> $GITHUB_ENV
+          else
+            echo "Unknown branch: ${{ github.ref_name }}. Exiting." && exit 1
+          fi
+
+      - name: Sync Contentful Data
+        run: |
+          contentful space export \
+            --space-id ${{ secrets.CONTENTFUL_SPACE_ID }} \
+            --environment-id $env \
+            --content-file content.json
